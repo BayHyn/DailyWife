@@ -1,0 +1,28 @@
+{
+    "napcat_host": {
+        "type": "string",
+        "description": "Napcat连接地址",
+        "hint": "格式：IP:端口，例如 127.0.0.1:3000",
+        "default": "127.0.0.1:3000",
+        "obvious_hint": true
+    },
+    "request_timeout": {
+        "type": "int",
+        "description": "请求超时时间（秒）",
+        "hint": "推荐值10-30秒",
+        "default": 10
+    },
+    "admin_list": {
+        "type": "list",
+        "description": "管理员QQ号列表",
+        "item_type": "string",
+        "default": [],
+        "hint": "填写需要设置为管理员的QQ号"
+    },
+    "default_cooling_hours": {
+        "type": "int",
+        "description": "默认冷静期时长（小时）",
+        "hint": "建议48-168小时",
+        "default": 48
+    }
+}
