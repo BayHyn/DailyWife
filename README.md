@@ -4,10 +4,15 @@
 本插件适合搭配napcat使用
 本插件依赖Napcat api服务
 - 在napcat面板设置服务端口
+
 ![alt text](image.png)
+
 - 测试api可用性
+
 ![alt text](301f794e4a4c678f820191548f3b4046.png)
+
 - 如果可用，请进行最后一步配置
+
 ![alt text](image-1.png)
 
 ## 命令说明
