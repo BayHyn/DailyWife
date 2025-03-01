@@ -9,9 +9,6 @@
 ![alt text](301f794e4a4c678f820191548f3b4046.png)
 - 如果可用，请进行最后一步配置
 ![alt text](image-1.png)
-# Weather Plugin
-
-基于 [**心知天气（Seniverse）**](https://www.seniverse.com/) 的免费 API，为 [AstrBot](https://github.com/Soulter/AstrBot) 提供 `/weather` 指令，支持查询当前天气、未来 3 天预报和生活指数（可选）等功能。
 
 ## 命令说明
 
