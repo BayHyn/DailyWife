@@ -29,13 +29,5 @@
         "description": "默认冷静期时长（小时）",
         "hint": "建议48-168小时",
         "default": 48
-    },
-    "reset_options": {
-        "type": "list",
-        "description": "重置命令选项",
-        "item_type": "string",
-        "options": ["all", "pairs", "cooling", "blocks", "breakups"],
-        "default": ["all", "pairs", "cooling", "blocks", "breakups"],
-        "hint": "可用选项：all(全部)/pairs(配对)/cooling(冷静期)/blocks(屏蔽)/breakups(分手记录)"
     }
 }

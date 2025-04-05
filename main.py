@@ -198,10 +198,10 @@ class DailyWifePlugin(Star):
                 Plain("❌ 参数错误\n"),
                 Plain("格式：重置 [群号/-选项]\n"),
                 Plain("可用选项：\n"),
-                Plain("-a → 全部数据\n"),
-                Plain("-p → 配对数据\n"),
-                Plain("-c → 冷静期\n"),
-                Plain("-b → 屏蔽名单\n"),
+                Plain("-a → 全部数据，\n"),
+                Plain("-p → 配对数据，\n"),
+                Plain("-c → 冷静期，\n"),
+                Plain("-b → 屏蔽名单，\n"),
                 Plain("-d → 分手记录")
             ])
             return
@@ -240,10 +240,7 @@ class DailyWifePlugin(Star):
                 yield event.plain_result("❌ 无效选项\n使用帮助查看可用选项")
                 return
 
-            opt_key, opt_name, reset_func = option_map[arg]
-            if opt_key not in self.config["reset_options"]:
-                yield event.plain_result(f"⚠ 该重置选项已被禁用：{opt_name}")
-                return
+            opt_name, reset_func = option_map[arg]
 
             reset_func()
             yield event.plain_result(f"✅ 已重置 {opt_name} 数据")
