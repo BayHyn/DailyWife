@@ -22,12 +22,18 @@
         "type": "int",
         "description": "超限屏蔽时长（小时）",
         "hint": "触发次数限制后的屏蔽时长",
-        "default": 48
+        "default": 24
     },
     "default_cooling_hours": {
         "type": "int",
         "description": "默认冷静期时长（小时）",
         "hint": "建议48-168小时",
         "default": 48
+    },
+    "display_name_max_length": {
+        "type": "int",
+        "description": "昵称显示最大长度",
+        "hint": "超过该长度将显示为省略号 (建议10-15)",
+        "default": 10
     }
 }

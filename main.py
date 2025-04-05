@@ -33,12 +33,22 @@ class GroupMember:
     def display_info(self) -> str:
         """带QQ号的显示信息"""
         return f"{self.card or self.nickname}({self.user_id})"
+    
 
 # --------------- 插件主类 ---------------
-@register("DailyWife", "jmt059", "每日老婆插件", "v0.41", "https://github.com/jmt059/DailyWife")
+@register("DailyWife", "jmt059", "每日老婆插件", "v0.5", "https://github.com/jmt059/DailyWife")
 class DailyWifePlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
+        # 新增日志初始化
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(PLUGIN_DIR / "debug.log"),
+                logging.StreamHandler()
+            ]
+        )
         self.config = config
         self.pair_data = self._load_pair_data()
         self.cooling_data = self._load_cooling_data()
@@ -93,9 +103,10 @@ class DailyWifePlugin(Star):
             self.napcat_hostname = parsed.hostname
             self.napcat_port = parsed.port
             self.timeout = self.config.get("request_timeout") or 10
+            logger.info(f"✅ Napcat 配置验证通过 | 地址：{self.napcat_host}")
         except Exception as e:
-            logger.error(f"Napcat配置错误: {traceback.format_exc()}")
-            raise RuntimeError("Napcat配置初始化失败")
+            logger.critical("❌ Napcat 配置异常，插件无法启动")
+            raise RuntimeError(f"Napcat配置错误：{e}")
 
     # --------------- 数据管理 ---------------
     def _load_pair_data(self) -> Dict:
@@ -138,8 +149,39 @@ class DailyWifePlugin(Star):
             return set()
 
     def _save_pair_data(self):
-        """安全保存配对数据"""
-        self._save_data(PAIR_DATA_PATH, self.pair_data)
+        try:
+            # 添加调试日志
+            logger.debug("====== 数据存储调试 ======")
+            logger.debug(f"存储路径：{PAIR_DATA_PATH.absolute()}")
+            logger.debug(f"当前数据：{json.dumps(self.pair_data, indent=2, ensure_ascii=False)}")
+            
+            # 检查目录权限
+            if not PAIR_DATA_PATH.parent.exists():
+                PAIR_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+                logger.debug("创建存储目录")
+                
+            # 测试写入权限
+            test_path = PAIR_DATA_PATH.parent / "permission_test.txt"
+            with open(test_path, "w") as f:
+                f.write("test")
+            test_path.unlink()
+            logger.debug("写入权限验证通过 ✅")
+            
+            # 实际存储操作
+            temp_path = PAIR_DATA_PATH.with_suffix(".tmp")
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(self.pair_data, f, ensure_ascii=False, indent=2)
+                
+            temp_path.replace(PAIR_DATA_PATH)
+            logger.info("配对数据保存成功 ✅")
+            
+        except PermissionError:
+            logger.critical("❌ 文件写入权限不足，请检查目录权限")
+            raise
+        except Exception as e:
+            logger.critical(f"保存失败 ❌ | 错误类型：{type(e).__name__}")
+            logger.critical(f"错误详情：{str(e)}")
+            raise
 
     def _save_cooling_data(self):
         """安全保存冷静期数据"""
@@ -181,12 +223,53 @@ class DailyWifePlugin(Star):
         except Exception as e:
             logger.error(f"分手次数数据加载失败: {traceback.format_exc()}")
             return {}        
+    def _parse_display_info(self, raw_info: str) -> Tuple[str, str]:
+        """增强容错能力的解析方法"""
+        try:
+            # 情况1：标准格式 "昵称(QQ号)"
+            if '(' in raw_info and raw_info.endswith(')'):
+                name_part, qq_part = raw_info.rsplit('(', 1)
+                return name_part.strip(), qq_part[:-1]
+            
+            # 情况2：无QQ号格式
+            if '(' not in raw_info:
+                return raw_info, "未知QQ号"
+            
+            # 情况3：异常格式处理
+            parts = raw_info.split('(')
+            if len(parts) >= 2:
+                return parts[0].strip(), parts[-1].replace(')', '')
+            return raw_info, "解析失败"
+            
+        except Exception as e:
+            logger.error(f"解析display_info失败：{raw_info} | 错误：{str(e)}")
+            return raw_info, "解析异常"
+        
+    def _format_display_info(self, raw_info: str) -> str:
+        """安全格式化显示信息（仅处理昵称部分）"""
+        # 解析出昵称和QQ号
+        nickname, qq = self._parse_display_info(raw_info)
+        
+        # 仅对昵称部分进行截断
+        max_len = self.config.get("display_name_max_length", 10)
+        safe_nickname = nickname.replace("\n", "").replace("\r", "").strip()
+        formatted_nickname = safe_nickname[:max_len] + "......" if len(safe_nickname) > max_len else safe_nickname
+        
+        # 组合完整信息（QQ号保持原样）
+        return f"{formatted_nickname}({qq})"
 
-    # --------------- 管理员验证 ---------------
-    def _is_admin(self, user_id: str) -> bool:
-        """验证管理员权限"""
-        admin_list = self.config.get("admin_list", [])
-        return str(user_id) in map(str, admin_list)
+
+    @filter.command("test_safe")
+    async def test_safe(self, event: AstrMessageEvent):
+        """安全测试（绕过所有业务逻辑）"""
+        try:
+            test_data = {"test": "OK"}
+            self.pair_data = test_data
+            self._save_pair_data()
+            yield event.plain_result("✅ 基础存储功能正常")
+        except Exception as e:
+            logger.error(f"安全测试失败：{traceback.format_exc()}")
+            yield event.plain_result("❌ 基础存储功能异常")
 
     # --------------- 命令处理器 ---------------
     @filter.command("重置")
@@ -194,16 +277,17 @@ class DailyWifePlugin(Star):
     async def reset_command_handler(self, event: AstrMessageEvent):
         args = event.message_str.split()[1:]
         if not args:
-            yield event.chain_result([
-                Plain("❌ 参数错误\n"),
-                Plain("格式：重置 [群号/-选项]\n"),
-                Plain("可用选项：\n"),
-                Plain("-a → 全部数据，\n"),
-                Plain("-p → 配对数据，\n"),
-                Plain("-c → 冷静期，\n"),
-                Plain("-b → 屏蔽名单，\n"),
-                Plain("-d → 分手记录")
-            ])
+            help_text = (
+                "❌ 参数错误\n"
+                "格式：重置 [群号/-选项]\n"
+                "可用选项：\n"
+                "-a → 全部数据\n"
+                "-p → 配对数据\n"
+                "-c → 冷静期\n"
+                "-b → 屏蔽名单\n"
+                "-d → 分手记录"
+            )
+            yield event.plain_result(help_text)  # 使用单个Plain组件
             return
 
         arg = args[0]
@@ -311,29 +395,49 @@ class DailyWifePlugin(Star):
 
     # --------------- 核心功能 ---------------
     async def _get_members(self, group_id: int) -> Optional[List[GroupMember]]:
-        """获取有效群成员"""
         try:
+            logger.debug("====== API请求调试 ======")
+            logger.debug(f"请求群组ID：{group_id}")
+            logger.debug(f"Napcat地址：{self.napcat_host}")
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"http://{self.napcat_host}/get_group_member_list",
                     json={"group_id": group_id},
                     timeout=self.timeout
                 ) as resp:
-                    if resp.status != 200:
-                        logger.error(f"HTTP状态码异常: {resp.status}")
+                    # 记录原始响应头
+                    logger.debug(f"响应头：{resp.headers}")
+                    
+                    # 记录原始响应内容
+                    raw_response = await resp.text()
+                    logger.debug(f"原始响应内容：{raw_response}")
+                    
+                    # 尝试解析JSON
+                    try:
+                        data = json.loads(raw_response)
+                    except json.JSONDecodeError:
+                        logger.error("API返回非JSON格式响应")
                         return None
                     
-                    data = await resp.json()
-                    if data["status"] != "ok":
-                        logger.error(f"API返回状态异常: {data}")
+                    # 验证数据结构
+                    if "data" not in data or not isinstance(data["data"], list):
+                        logger.error("API返回数据结构异常")
                         return None
                     
-                    return [
-                        GroupMember(m) for m in data["data"]
-                        if str(m["user_id"]) not in self.blocked_users
-                    ]
+                    # 验证成员数据格式
+                    valid_members = []
+                    for m in data["data"]:
+                        if "user_id" not in m:
+                            logger.warning(f"无效成员数据：{m}")
+                            continue
+                        valid_members.append(GroupMember(m))
+                    
+                    logger.debug(f"有效成员数：{len(valid_members)}")
+                    return valid_members
+                    
         except Exception as e:
-            logger.error(f"获取群成员失败: {traceback.format_exc()}")
+            logger.error(f"获取成员异常：{traceback.format_exc()}")
             return None
 
     def _check_reset(self, group_id: str):
@@ -353,8 +457,14 @@ class DailyWifePlugin(Star):
     # --------------- 用户功能 ---------------
     @filter.command("今日老婆")
     async def pair_handler(self, event: AstrMessageEvent):
+        logger.debug("===== 进入配对流程 =====")
+        logger.debug(f"初始配对数据：{json.dumps(self.pair_data, indent=2)}")
         """配对功能"""
         try:
+
+            logger.debug(f"用户ID：{event.get_sender_id()} | 群ID：{event.message_obj.group_id}")
+            logger.debug(f"当前配对数据状态：{json.dumps(self.pair_data, indent=2)}")
+        
             if not hasattr(event.message_obj, "group_id"):
                 return
 
@@ -367,30 +477,28 @@ class DailyWifePlugin(Star):
 
             if user_id in group_data["pairs"]:
                 # 获取角色信息
-                is_initiator = group_data["pairs"][user_id].get("is_initiator", False)
-
-                if is_initiator:
-                    # 抽方专属回复
-                    reply = [
-                        Plain("👑【喜报】\n"),
-                        Plain(f"▸ 已迎娶老婆：{group_data['pairs'][user_id]['display_name']}\n"),
-                        Plain(f"▸ 特权有效期：至今日24点"),
-                    ]
-                else:
-                    # 被抽方专属回复
-                    reply = [
-                        Plain("🎁【恭喜】\n"),
-                        Plain(f"✦ 您被 {group_data['pairs'][user_id]['display_name']} 选为老婆\n"),
-                        Plain(f"✦ 有效期：至今日24点"),
-                    ]
+                pair_info = group_data["pairs"][user_id]
+                formatted_name = self._format_display_info(pair_info["display_name"])
                 
-                yield event.chain_result(reply)
+                if pair_info.get("is_initiator", False):
+                    reply_text = (
+                        "👑【喜报】\n"
+                        f"▸ 已迎娶：{formatted_name}\n"
+                        "▸ 有效期：至今日24点"
+                    )
+                else:
+                    reply_text = (
+                        "🎁【恭喜】\n"
+                        f"✦ 您被 {formatted_name} 选为CP\n"
+                        "✦ 有效期：至今日24点"
+                    )
+                yield event.chain_result([Plain(reply_text)])
                 return
-
 
             members = await self._get_members(int(group_id))
             if not members:
-                yield event.plain_result("🔧 服务暂时不可用，请稍后再试")
+                logger.warning(f"群 {group_id} 成员列表为空，可能原因：未获取到数据或群组不存在")
+                yield event.plain_result("⚠️ 当前群组状态异常，请联系管理员")
                 return
 
             valid_members = [
@@ -414,33 +522,39 @@ class DailyWifePlugin(Star):
                 yield event.plain_result("😢 暂时找不到合适的人选")
                 return
 
+            # 存储原始数据（不格式化）
             group_data["pairs"][user_id] = {
                 "user_id": target.user_id,
-                "display_name": target.display_info,
-                "is_initiator": True  # 标记抽方
+                "display_name": target.display_info,  # 直接存储原始信息
+                "is_initiator": True
             }
             group_data["pairs"][target.user_id] = {
                 "user_id": user_id,
-                "display_name": f"{event.get_sender_name()}({user_id})",
-                "is_initiator": False  # 标记被抽方
+                "display_name": f"{event.get_sender_name()}({user_id})",  # 保持原始格式
+                "is_initiator": False
             }
+
             group_data["used"].extend([user_id, target.user_id])
             self._save_pair_data()
 
             avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target.user_id}&spec=640"
-            # 给抽方的提示（在未配对时首次发送命令的人） (is_initiator=True)
+            sender_display = self._format_display_info(f"{event.get_sender_name()}({user_id})")
+            target_display = self._format_display_info(target.display_info)
+            
             yield event.chain_result([
-                Plain(f"恭喜{event.get_sender_name()}({user_id})，"),
-                Plain(f"▻ 成功娶到：{target.display_info}\n"),
+                Plain(f"恭喜{sender_display}，\n"),
+                Plain(f"▻ 成功娶到：{target_display}\n"),
                 Plain(f"▻ 对方头像："),
                 Image.fromURL(avatar_url),
-                Plain(f"💎 好好对待TA哦，\n"),
-                Plain(f"使用 查询老婆 查看详细信息")
+                Plain(f"\n💎 好好对待TA哦，\n"),
+                Plain(f"使用 /查询老婆 查看详细信息")
             ])
 
         except Exception as e:
-            logger.error(f"配对失败: {traceback.format_exc()}")
-            yield event.plain_result("❌ 配对过程发生异常")
+            logger.error(f"配对全局异常 ❌ | 错误类型：{type(e).__name__}")
+            logger.error(f"错误详情：{str(e)}")
+            logger.error(f"堆栈跟踪：{traceback.format_exc()}")
+            yield event.plain_result("❌ 配对过程发生严重异常，请联系开发者")
 
     # ================== 修复后的查询老婆命令 ==================
     @filter.command("查询老婆")
@@ -453,25 +567,23 @@ class DailyWifePlugin(Star):
             self._check_reset(group_id)
             group_data = self.pair_data.get(group_id, {})
 
-            # 先检查是否存在CP关系
             if user_id not in group_data.get("pairs", {}):
                 yield event.plain_result("🌸 你还没有伴侣哦~")
                 return
 
             target_info = group_data["pairs"][user_id]
             avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target_info['user_id']}&spec=640"
-
-            # 角色判断逻辑
-            if target_info.get("is_initiator", False):
-                role_desc = "👑 您的今日老婆"
-                footer = "\n(请好好对待TA)"
-            else:
-                role_desc = "💖 您的今日老公"
-                footer = "\n(请好好对待TA)"
-                
+            
+            # ========== 关键修改点 ==========
+            raw_display_info = target_info['display_name']  # 格式："昵称(QQ号)"
+            formatted_info = self._format_display_info(raw_display_info)  # 使用新方法
+            
+            # 角色判断
+            role_desc = "👑 您的今日老婆" if target_info.get("is_initiator", False) else "💖 您的今日老公"
+            footer = "\n(请好好对待TA)"
+            
             yield event.chain_result([
-                Plain(f"{role_desc}：{target_info['display_name']}{footer}"),
-                At(qq=target_info["user_id"]),
+                Plain(f"{role_desc}：{formatted_info}{footer}"),  # 使用格式化后的完整信息
                 Image.fromURL(avatar_url)
             ])
 
@@ -579,6 +691,7 @@ class DailyWifePlugin(Star):
             datetime.now() < pair["expire_time"]
             for pair in self.cooling_data.values()
         )
+
 
     # --------------- 帮助信息 ---------------
     @filter.command("老婆帮帮我")  # 改为更直观的中文命令
