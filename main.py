@@ -547,7 +547,7 @@ class DailyWifePlugin(Star):
                 
             yield event.chain_result([
                 Plain(f"💔 您{action}\n⚠️ {penalty}"),
-                Plain(f"\n⏳ {cooling_hours}小时内无法再匹配")
+                Plain(f"\n⏳ {cooling_hours}小时内无法再匹配到一起")
             ])
             user_counts[user_id] = current_count + 1
             self.breakup_counts[today] = user_counts
