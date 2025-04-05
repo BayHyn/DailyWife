@@ -35,7 +35,7 @@ class GroupMember:
         return f"{self.card or self.nickname}({self.user_id})"
 
 # --------------- 插件主类 ---------------
-@register("DailyWife", "jmt059", "每日老婆插件", "v0.4", "https://github.com/jmt059/DailyWife")
+@register("DailyWife", "jmt059", "每日老婆插件", "v0.41", "https://github.com/jmt059/DailyWife")
 class DailyWifePlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -430,12 +430,12 @@ class DailyWifePlugin(Star):
             avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target.user_id}&spec=640"
             # 给抽方的提示（在未配对时首次发送命令的人） (is_initiator=True)
             yield event.chain_result([
-                Plain(f"【恭喜{event.get_sender_name()}({user_id})🎯娶老婆成功】\n"),
+                Plain(f"恭喜{event.get_sender_name()}({user_id})，"),
                 Plain(f"▻ 成功娶到：{target.display_info}\n"),
                 Plain(f"▻ 对方头像："),
                 Image.fromURL(avatar_url),
-                Plain(f"\n💎 好好对待TA哦"),
-                Plain(f"\n使用 查询老婆 查看详细信息")
+                Plain(f"💎 好好对待TA哦，\n"),
+                Plain(f"使用 查询老婆 查看详细信息")
             ])
 
         except Exception as e:
