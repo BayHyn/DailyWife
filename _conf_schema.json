@@ -12,17 +12,30 @@
         "hint": "推荐值10-30秒",
         "default": 10
     },
-    "admin_list": {
-        "type": "list",
-        "description": "管理员QQ号列表",
-        "item_type": "string",
-        "default": [],
-        "hint": "填写需要设置为管理员的QQ号"
+    "max_daily_breakups": {
+        "type": "int",
+        "description": "每日最大分手次数",
+        "hint": "超过此次数将自动屏蔽用户",
+        "default": 3
+    },
+    "breakup_block_hours": {
+        "type": "int",
+        "description": "超限屏蔽时长（小时）",
+        "hint": "触发次数限制后的屏蔽时长",
+        "default": 48
     },
     "default_cooling_hours": {
         "type": "int",
         "description": "默认冷静期时长（小时）",
         "hint": "建议48-168小时",
         "default": 48
+    },
+    "reset_options": {
+        "type": "list",
+        "description": "重置命令选项",
+        "item_type": "string",
+        "options": ["all", "pairs", "cooling", "blocks", "breakups"],
+        "default": ["all", "pairs", "cooling", "blocks", "breakups"],
+        "hint": "可用选项：all(全部)/pairs(配对)/cooling(冷静期)/blocks(屏蔽)/breakups(分手记录)"
     }
 }

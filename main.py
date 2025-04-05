@@ -16,6 +16,7 @@ PLUGIN_DIR = Path(__file__).parent
 PAIR_DATA_PATH = PLUGIN_DIR / "pair_data.json"
 COOLING_DATA_PATH = PLUGIN_DIR / "cooling_data.json"
 BLOCKED_USERS_PATH = PLUGIN_DIR / "blocked_users.json"
+BREAKUP_COUNT_PATH = PLUGIN_DIR / "breakup_counts.json"
 
 # --------------- 日志配置 ---------------
 logger = logging.getLogger("DailyWife")
@@ -34,7 +35,7 @@ class GroupMember:
         return f"{self.card or self.nickname}({self.user_id})"
 
 # --------------- 插件主类 ---------------
-@register("DailyWife", "jmt059", "每日老婆插件", "v0.3beta", "https://github.com/jmt059/DailyWife")
+@register("DailyWife", "jmt059", "每日老婆插件", "v0.4", "https://github.com/jmt059/DailyWife")
 class DailyWifePlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -45,6 +46,8 @@ class DailyWifePlugin(Star):
         self._init_napcat_config()
         self._migrate_old_data()
         self._clean_invalid_cooling_records()
+        self.breakup_counts = self._load_breakup_counts()
+    
 
     # --------------- 数据迁移 ---------------
     def _migrate_old_data(self):
@@ -163,6 +166,21 @@ class DailyWifePlugin(Star):
             temp_path.replace(path)
         except Exception as e:
             logger.error(f"数据保存失败: {traceback.format_exc()}")
+        
+    def _load_breakup_counts(self) -> Dict[str, Dict[str, int]]:
+        """加载分手次数数据"""
+        try:
+            if BREAKUP_COUNT_PATH.exists():
+                with open(BREAKUP_COUNT_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return {
+                        date: {k: int(v) for k, v in counts.items()}
+                        for date, counts in data.items()
+                    }
+            return {}
+        except Exception as e:
+            logger.error(f"分手次数数据加载失败: {traceback.format_exc()}")
+            return {}        
 
     # --------------- 管理员验证 ---------------
     def _is_admin(self, user_id: str) -> bool:
@@ -172,26 +190,34 @@ class DailyWifePlugin(Star):
 
     # --------------- 命令处理器 ---------------
     @filter.command("重置")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def reset_command_handler(self, event: AstrMessageEvent):
-        """完整的重置命令处理器"""
-        if not self._is_admin(event.get_sender_id()):
-            yield event.plain_result("⚠ 权限不足，需要管理员权限")
-            return
-
         args = event.message_str.split()[1:]
         if not args:
-            yield event.plain_result("❌ 参数错误\n格式：重置 [群号/-a/-c]")
+            yield event.chain_result([
+                Plain("❌ 参数错误\n"),
+                Plain("格式：重置 [群号/-选项]\n"),
+                Plain("可用选项：\n"),
+                Plain("-a → 全部数据\n"),
+                Plain("-p → 配对数据\n"),
+                Plain("-c → 冷静期\n"),
+                Plain("-b → 屏蔽名单\n"),
+                Plain("-d → 分手记录")
+            ])
             return
 
         arg = args[0]
+        
+        # 全部重置
         if arg == "-a":
             self.pair_data = {}
-            self._save_pair_data()
-            yield event.plain_result("✅ 已重置所有群组的配对数据")
-        elif arg == "-c":
             self.cooling_data = {}
-            self._save_cooling_data()
-            yield event.plain_result("✅ 已重置所有冷静期数据")
+            self.blocked_users = set()
+            self.breakup_counts = {}
+            self._save_all_data()
+            yield event.plain_result("✅ 已重置所有数据（配对/冷静期/屏蔽/分手记录）")
+
+        # 按群号重置
         elif arg.isdigit():
             group_id = str(arg)
             if group_id in self.pair_data:
@@ -200,15 +226,60 @@ class DailyWifePlugin(Star):
                 yield event.plain_result(f"✅ 已重置群组 {group_id} 的配对数据")
             else:
                 yield event.plain_result(f"⚠ 未找到群组 {group_id} 的记录")
+
+        # 选项重置
         else:
-            yield event.plain_result("❌ 无效参数\n可用参数：群号/-a(全部)/-c(冷静期)")
+            option_map = {
+                "-p": ("pairs", "配对", lambda: self._reset_pairs()),
+                "-c": ("cooling", "冷静期", lambda: self._reset_cooling()),
+                "-b": ("blocks", "屏蔽名单", lambda: self._reset_blocks()),
+                "-d": ("breakups", "分手记录", lambda: self._reset_breakups())
+            }
+            
+            if arg not in option_map:
+                yield event.plain_result("❌ 无效选项\n使用帮助查看可用选项")
+                return
+
+            opt_key, opt_name, reset_func = option_map[arg]
+            if opt_key not in self.config["reset_options"]:
+                yield event.plain_result(f"⚠ 该重置选项已被禁用：{opt_name}")
+                return
+
+            reset_func()
+            yield event.plain_result(f"✅ 已重置 {opt_name} 数据")
+
+    def _reset_pairs(self):
+        self.pair_data = {}
+        self._save_pair_data()
+
+    def _reset_cooling(self):
+        self.cooling_data = {}
+        self._save_cooling_data()
+
+    def _reset_blocks(self):
+        self.blocked_users = set()
+        self._save_blocked_users()
+        # 同时清理相关冷静期记录
+        self.cooling_data = {
+            k:v for k,v in self.cooling_data.items() 
+            if not k.startswith("block_")
+        }
+        self._save_cooling_data()
+
+    def _reset_breakups(self):
+        self.breakup_counts = {}
+        self._save_data(BREAKUP_COUNT_PATH, self.breakup_counts)
+
+    def _save_all_data(self):
+        self._save_pair_data()
+        self._save_cooling_data()
+        self._save_blocked_users()
+        self._save_data(BREAKUP_COUNT_PATH, self.breakup_counts)
 
     @filter.command("屏蔽")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def block_command_handler(self, event: AstrMessageEvent):
         """完整的屏蔽命令处理器"""
-        if not self._is_admin(event.get_sender_id()):
-            yield event.plain_result("⚠ 权限不足，需要管理员权限")
-            return
 
         qq = event.message_str.split()[1] if len(event.message_str.split()) > 1 else None
         if not qq or not qq.isdigit():
@@ -224,11 +295,9 @@ class DailyWifePlugin(Star):
             yield event.plain_result(f"✅ 已屏蔽用户 {qq}")
 
     @filter.command("冷静期")
+    @filter.permission_type(filter.PermissionType.ADMIN)
     async def cooling_command_handler(self, event: AstrMessageEvent):
         """完整的冷静期命令处理器"""
-        if not self._is_admin(event.get_sender_id()):
-            yield event.plain_result("⚠ 权限不足，需要管理员权限")
-            return
 
         args = event.message_str.split()
         if len(args) < 2 or not args[1].isdigit():
@@ -428,6 +497,30 @@ class DailyWifePlugin(Star):
             target_info = self.pair_data[group_id]["pairs"][user_id]
             target_id = target_info["user_id"]
             is_initiator = target_info.get("is_initiator", False)  # 先获取身份信息
+            today = datetime.now().strftime("%Y-%m-%d")
+            user_counts = self.breakup_counts.get(today, {})
+            current_count = user_counts.get(user_id, 0)
+
+            if current_count >= self.config["max_daily_breakups"]:
+                # 自动屏蔽逻辑
+                block_hours = self.config["breakup_block_hours"]
+                expire_time = datetime.now() + timedelta(hours=block_hours)
+                
+                self.blocked_users.add(user_id)
+                self.cooling_data[f"block_{user_id}"] = {
+                    "users": [user_id],
+                    "expire_time": expire_time
+                }
+                
+                self._save_blocked_users()
+                self._save_cooling_data()
+                
+                yield event.chain_result([
+                    Plain("⚠️ 检测到异常操作：\n"),
+                    Plain(f"▸ 今日已分手 {current_count} 次\n"),
+                    Plain(f"▸ 功能已临时禁用 {block_hours} 小时")
+                ])
+                return
 
             # 删除配对数据
             del self.pair_data[group_id]["pairs"][user_id]
@@ -456,7 +549,10 @@ class DailyWifePlugin(Star):
                 Plain(f"💔 您{action}\n⚠️ {penalty}"),
                 Plain(f"\n⏳ {cooling_hours}小时内无法再匹配")
             ])
-            
+            user_counts[user_id] = current_count + 1
+            self.breakup_counts[today] = user_counts
+            self._save_data(BREAKUP_COUNT_PATH, self.breakup_counts)     
+                   
         except Exception as e:
             logger.error(f"分手操作失败: {traceback.format_exc()}")
             yield event.plain_result("❌ 分手操作异常")
@@ -499,15 +595,19 @@ class DailyWifePlugin(Star):
         /我要分手 - 解除当前CP关系
         
         ⚙️ 管理员命令：
-        /重置 [群号] - 重置指定群数据
-        /重置 -a      - 重置所有群数据
-        /重置 -c      - 重置冷静期数据
+        /重置 -a → 全部数据（配对/冷静期/屏蔽/分手记录）
+        /重置 [群号] → 指定群配对数据
+        /重置 -p → 所有群配对数据
+        /重置 -c → 冷静期数据
+        /重置 -b → 屏蔽名单及相关冷静期
+        /重置 -d → 分手次数记录
         /屏蔽 [QQ号]  - 屏蔽指定用户
         /冷静期 [小时] - 设置冷静期时长
         
-        📌 注意事项：
-        1. 命令需以斜杠开头（如 /今日老婆）
-        2. 解除关系后需间隔 {self.config.get('default_cooling_hours', 48)} 小时才能再次匹配
+        当前配置：
+        ▸ 每日最大分手次数：{self.config['max_daily_breakups']}
+        ▸ 超限屏蔽时长：{self.config['breakup_block_hours']}小时
+        ▸ 解除关系后需间隔 {self.config.get('default_cooling_hours', 48)} 小时才能再次匹配
         """
         yield event.chain_result([Plain(help_msg.strip())])
 
@@ -522,6 +622,20 @@ class DailyWifePlugin(Star):
             
             await asyncio.sleep(wait_seconds)
             try:
+                # 清除昨日数据
+                yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+                if yesterday in self.breakup_counts:
+                    del self.breakup_counts[yesterday]
+                    self._save_data(BREAKUP_COUNT_PATH, self.breakup_counts)
+                    
+                # 清理过期屏蔽
+                now = datetime.now()
+                self.cooling_data = {
+                    k:v for k,v in self.cooling_data.items()
+                    if not (k.startswith("block_") and v["expire_time"] < now)
+                }
+                self._save_cooling_data()
+
                 self._clean_invalid_cooling_records()
                 logger.info("每日自动清理任务完成")
             except Exception as e:
