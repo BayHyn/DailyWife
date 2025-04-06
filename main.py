@@ -344,7 +344,7 @@ class DailyWifePlugin(Star):
 
     # --------------- 用户功能 ---------------
     @filter.command("今日老婆")
-    async def pair_handler(self, event: AstrMessageEvent):
+    async def daily_wife_command(self, event: AstrMessageEvent):
         if not hasattr(event.message_obj, "group_id"):
             yield event.plain_result("此命令仅限群聊中使用。")
             return
@@ -353,37 +353,44 @@ class DailyWifePlugin(Star):
             user_id = event.get_sender_id()
             bot_id = event.message_obj.self_id
             self._check_reset(group_id)
-            group_data = self.pair_data[group_id]
-            if user_id in group_data["pairs"]:
-                pair_info = group_data["pairs"][user_id]
-                reply_text = "您已经有伴侣了，使用查询命令查看详细" if pair_info.get("is_initiator", False) else "您已经被娶走了，使用查询命令查看详细"
-                yield event.chain_result([Plain(reply_text)])
+            group_data = self.pair_data.get(group_id, {"date": datetime.now().strftime("%Y-%m-%d"), "pairs": {}, "used": []})
+
+            # Check if the user is already in a pairing
+            if user_id in group_data.get("pairs", {}):
+                yield event.plain_result(f"🌸 你今天已经有伴侣啦，用查询命令查看详细哦~")
                 return
+
             members = await self._get_members(int(group_id))
             if not members:
                 yield event.plain_result("⚠️ 当前群组状态异常，请联系管理员")
                 return
-            valid_members = [ m for m in members if m.user_id not in {user_id, bot_id}
-                and m.user_id not in group_data["used"]
-                and not self._is_in_cooling_period(user_id, m.user_id) ]
+            valid_members = [m for m in members if m.user_id not in {user_id, bot_id}
+                                            and m.user_id not in group_data["used"]
+                                            and not self._is_in_cooling_period(user_id, m.user_id)]
             target = None
             for _ in range(5):
                 if not valid_members:
                     break
                 target = random.choice(valid_members)
-                if target.user_id not in group_data["pairs"]:
+                # Now we only check if the *target* is already in a pair
+                if target.user_id not in group_data.get("pairs", {}):
                     break
                 valid_members.remove(target)
                 target = None
             if not target:
                 yield event.plain_result("😢 暂时找不到合适的人选")
                 return
-            group_data["pairs"][user_id] = {"user_id": target.user_id, "display_name": target.display_info, "is_initiator": True}
-            group_data["pairs"][target.user_id] = {"user_id": user_id, "display_name": f"{event.get_sender_name()}({user_id})", "is_initiator": False}
-            group_data["used"].extend([user_id, target.user_id])
+
+            # Create a bidirectional pairing
+            sender_display = self._format_display_info(f"{event.get_sender_name()}({user_id})")
+            group_data["pairs"][user_id] = {"user_id": target.user_id, "display_name": target.display_info}
+            group_data["pairs"][target.user_id] = {"user_id": user_id, "display_name": sender_display}
+            if user_id not in group_data["used"]:
+                group_data["used"].append(user_id)
+            if target.user_id not in group_data["used"]:
+                group_data["used"].append(target.user_id)
             self._save_pair_data()
             avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target.user_id}&spec=640"
-            sender_display = self._format_display_info(f"{event.get_sender_name()}({user_id})")
             target_display = self._format_display_info(target.display_info)
             yield event.chain_result([
                 Plain(f"恭喜{sender_display}，\n"),
@@ -397,6 +404,7 @@ class DailyWifePlugin(Star):
             print(f"配对异常: {traceback.format_exc()}")
             yield event.plain_result("❌ 配对过程发生严重异常，请联系开发者")
 
+
     @filter.command("查询老婆")
     async def query_handler(self, event: AstrMessageEvent):
         try:
@@ -407,11 +415,10 @@ class DailyWifePlugin(Star):
             if user_id not in group_data.get("pairs", {}):
                 yield event.plain_result("🌸 你还没有伴侣哦~")
                 return
-            target_info = group_data["pairs"][user_id]
-            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={target_info['user_id']}&spec=640"
-            formatted_info = self._format_display_info(target_info['display_name'])
-            role_desc = "👑 您的今日老婆" if target_info.get("is_initiator", False) else "💖 您的今日老公"
-            yield event.chain_result([Plain(f"{role_desc}：{formatted_info}\n(请好好对待TA)"), Image.fromURL(avatar_url)])
+            partner_info = group_data["pairs"][user_id]
+            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={partner_info['user_id']}&spec=640"
+            formatted_info = self._format_display_info(partner_info['display_name'])
+            yield event.chain_result([Plain(f"💖 您的今日伴侣：{formatted_info}\n(请好好对待TA)"), Image.fromURL(avatar_url)])
         except Exception as e:
             print(f"查询异常: {traceback.format_exc()}")
             yield event.plain_result("❌ 查询过程发生异常")
@@ -424,9 +431,8 @@ class DailyWifePlugin(Star):
             if group_id not in self.pair_data or user_id not in self.pair_data[group_id]["pairs"]:
                 yield event.plain_result("🌸 您还没有伴侣哦~")
                 return
-            target_info = self.pair_data[group_id]["pairs"][user_id]
-            target_id = target_info["user_id"]
-            is_initiator = target_info.get("is_initiator", False)
+            partner_info = self.pair_data[group_id]["pairs"][user_id]
+            partner_id = partner_info["user_id"]
             today = datetime.now().strftime("%Y-%m-%d")
             user_counts = self.breakup_counts.get(today, {})
             current_count = user_counts.get(user_id, 0)
@@ -439,18 +445,21 @@ class DailyWifePlugin(Star):
                 self._save_cooling_data()
                 yield event.chain_result([Plain(f"⚠️ 检测到异常操作：\n▸ 今日已分手 {current_count} 次\n▸ 功能已临时禁用 {block_hours} 小时")])
                 return
-            del self.pair_data[group_id]["pairs"][user_id]
-            # No need to delete the partner's entry as it might not exist
+
+            # 删除双方的配对记录
+            if user_id in self.pair_data[group_id]["pairs"]:
+                del self.pair_data[group_id]["pairs"][user_id]
+            if partner_id in self.pair_data[group_id]["pairs"] and self.pair_data[group_id]["pairs"][partner_id]["user_id"] == user_id:
+                del self.pair_data[group_id]["pairs"][partner_id]
+
             group_data = self.pair_data[group_id]
-            group_data["used"] = [uid for uid in group_data["used"] if uid != user_id and uid != target_id]
+            group_data["used"] = [uid for uid in group_data["used"] if uid != user_id and uid != partner_id]
             self._save_pair_data()
-            cooling_key = f"{user_id}-{target_id}"
+            cooling_key = f"{user_id}-{partner_id}"
             cooling_hours = self.config.get("default_cooling_hours", 48)
-            self.cooling_data[cooling_key] = {"users": [user_id, target_id], "expire_time": datetime.now() + timedelta(hours=cooling_hours)}
+            self.cooling_data[cooling_key] = {"users": [user_id, partner_id], "expire_time": datetime.now() + timedelta(hours=cooling_hours)}
             self._save_cooling_data()
-            action = "主动解除与老婆的关系" if is_initiator else "主动解除与老公的关系"
-            penalty = "将失去老公身份" if is_initiator else "将失去老婆身份"
-            yield event.chain_result([Plain(f"💔 您{action}\n⚠️ {penalty}\n⏳ {cooling_hours}小时内无法再匹配到一起")])
+            yield event.chain_result([Plain(f"💔 您已解除与伴侣的关系\n⏳ {cooling_hours}小时内无法再匹配到一起")])
             user_counts[user_id] = current_count + 1
             self.breakup_counts[today] = user_counts
             self._save_data(BREAKUP_COUNT_PATH, self.breakup_counts)
@@ -539,8 +548,11 @@ class DailyWifePlugin(Star):
                         return
                     elif response_data.get("status") == "ok" and "data" in response_data:
                         target_nickname = response_data["data"].get("nickname", f"未知用户({target_qq})")
-                        group_data["pairs"][user_id] = {"user_id": target_qq, "display_name": f"{target_nickname}({target_qq})", "is_initiator": True}
-                        group_data["used"].append(user_id)
+                        sender_nickname = event.get_sender_name()
+                        group_data["pairs"][user_id] = {"user_id": target_qq, "display_name": f"{target_nickname}({target_qq})"}
+                        group_data["pairs"][target_qq] = {"user_id": user_id, "display_name": f"{sender_nickname}({user_id})"}
+                        if user_id not in group_data["used"]:
+                            group_data["used"].append(user_id)
                         if target_qq not in group_data["used"]:
                             group_data["used"].append(target_qq)
                         self._save_pair_data()
@@ -617,12 +629,19 @@ class DailyWifePlugin(Star):
                         if partner_pair.get("locked", False):
                             yield event.plain_result("强娶失败：目标伴侣处于锁定状态。")
                             return
-                        del group_data["pairs"][target_qq]
-                        if partner_id in group_data["pairs"]:
-                            del group_data["pairs"][partner_id]
-                        group_data["used"] = [uid for uid in group_data["used"] if uid not in {target_qq, partner_id}]
-                        group_data["pairs"][user_id] = {"user_id": target_qq, "display_name": f"{target_nickname}({target_qq})", "is_initiator": True}
-                        group_data["used"].append(user_id)
+
+                        # 删除被抢夺者及其原配偶的双向记录
+                        if target_qq in group_data["pairs"]:
+                            original_partner_id = group_data["pairs"][target_qq]["user_id"]
+                            del group_data["pairs"][target_qq]
+                            if original_partner_id in group_data["pairs"] and group_data["pairs"][original_partner_id]["user_id"] == target_qq:
+                                del group_data["pairs"][original_partner_id]
+
+                        sender_nickname = event.get_sender_name()
+                        group_data["pairs"][user_id] = {"user_id": target_qq, "display_name": f"{target_nickname}({target_qq})"}
+                        group_data["pairs"][target_qq] = {"user_id": user_id, "display_name": f"{sender_nickname}({user_id})"}
+                        if user_id not in group_data["used"]:
+                            group_data["used"].append(user_id)
                         if target_qq not in group_data["used"]:
                             group_data["used"].append(target_qq)
                         self._save_pair_data()
