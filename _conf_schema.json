@@ -1,69 +1,57 @@
 {
-    "wife_config": {
-      "description": "今日老婆配置",
-      "type": "object",
-      "items": {
-        "napcat_host": {
-          "type": "string",
-          "description": "Napcat连接地址",
-          "hint": "格式：IP:端口，例如 127.0.0.1:3000",
-          "default": "127.0.0.1:3000",
-          "obvious_hint": true
-        },
-        "request_timeout": {
-          "type": "int",
-          "description": "请求超时时间（秒）",
-          "hint": "推荐值10-30秒",
-          "default": 10
-        },
-        "max_daily_breakups": {
-          "type": "int",
-          "description": "每日最大分手次数",
-          "hint": "超过此次数将自动屏蔽用户",
-          "default": 3
-        },
-        "breakup_block_hours": {
-          "type": "int",
-          "description": "超限屏蔽时长（小时）",
-          "hint": "触发次数限制后的屏蔽时长",
-          "default": 24
-        },
-        "default_cooling_hours": {
-          "type": "int",
-          "description": "默认冷静期时长（小时）",
-          "hint": "建议48-168小时",
-          "default": 48
-        },
-        "display_name_max_length": {
-          "type": "int",
-          "description": "昵称显示最大长度",
-          "hint": "超过该长度将显示为省略号 (建议10-15)",
-          "default": 10
-        },
-        "Advanced configuration": {
-          "description": "进阶功能配置",
-          "type": "object",
-          "items": {
-            "max_daily_wishes": {
-              "type": "int",
-              "description": "每日最多许愿次数",
-              "hint": "每个用户每日允许使用许愿功能的次数",
-              "default": 1
-            },
-            "max_daily_rob_attempts": {
-              "type": "int",
-              "description": "每日最多强娶次数",
-              "hint": "每个用户每日允许使用强娶功能的次数（成功与否均扣减）",
-              "default": 2
-            },
-            "max_daily_lock": {
-              "type": "int",
-              "description": "每日最多锁定次数",
-              "hint": "每个用户每日允许使用锁定功能的次数",
-              "default": 1
-            }
-          }
-        }
-      }
+    "napcat_host": {
+        "type": "string",
+        "description": "Napcat连接地址",
+        "hint": "格式：IP:端口，例如 127.0.0.1:3000",
+        "default": "127.0.0.1:3000",
+        "obvious_hint": true
+    },
+    "request_timeout": {
+        "type": "int",
+        "description": "请求超时时间（秒）",
+        "hint": "推荐值10-30秒",
+        "default": 10
+    },
+    "max_daily_breakups": {
+        "type": "int",
+        "description": "每日最大分手次数",
+        "hint": "超过此次数将自动屏蔽用户",
+        "default": 3
+    },
+    "breakup_block_hours": {
+        "type": "int",
+        "description": "超限屏蔽时长（小时）",
+        "hint": "触发次数限制后的屏蔽时长",
+        "default": 24
+    },
+    "default_cooling_hours": {
+        "type": "int",
+        "description": "默认冷静期时长（小时）",
+        "hint": "建议48-168小时",
+        "default": 48
+    },
+    "display_name_max_length": {
+        "type": "int",
+        "description": "昵称显示最大长度",
+        "hint": "超过该长度将显示为省略号 (建议10-15)",
+        "default": 10
+    },
+    "max_daily_wishes": {
+        "type": "int",
+        "description": "每日最多许愿次数",
+        "hint": "每个用户每日允许使用许愿功能的次数",
+        "default": 1
+    },
+    "max_daily_rob_attempts": {
+        "type": "int",
+        "description": "每日最多劫婚次数",
+        "hint": "每个用户每日允许使用劫婚功能的次数（成功与否均扣减）",
+        "default": 2
+    },
+    "max_daily_lock": {
+        "type": "int",
+        "description": "每日最多锁定次数",
+        "hint": "每个用户每日允许使用锁定功能的次数",
+        "default": 1
     }
-  }
+}
