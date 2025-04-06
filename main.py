@@ -520,10 +520,6 @@ class DailyWifePlugin(Star):
             self.pair_data[group_id] = {"date": datetime.now().strftime("%Y-%m-%d"), "pairs": {}, "used": []}
         group_data = self.pair_data[group_id]
 
-        if target_qq in group_data["pairs"] and group_data["pairs"][target_qq]["user_id"] == user_id:
-            yield event.plain_result("你们已经在一起了……")
-            return
-
         if user_id in group_data["pairs"]:
             yield event.plain_result("你已经有伴侣了……许愿将不可用")
             return
@@ -589,10 +585,6 @@ class DailyWifePlugin(Star):
         if group_id not in self.pair_data:
             self.pair_data[group_id] = {"date": datetime.now().strftime("%Y-%m-%d"), "pairs": {}, "used": []}
         group_data = self.pair_data[group_id]
-
-        if target_qq in group_data["pairs"] and group_data["pairs"][target_qq]["user_id"] == user_id:
-            yield event.plain_result("你们已经在一起了……")
-            return
 
         if user_id in group_data["pairs"]:
             yield event.plain_result("你已经有伴侣了……强娶将不可用")
