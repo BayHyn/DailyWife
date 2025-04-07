@@ -44,8 +44,8 @@
     },
     "max_daily_rob_attempts": {
         "type": "int",
-        "description": "每日最多劫婚次数",
-        "hint": "每个用户每日允许使用劫婚功能的次数（成功与否均扣减）",
+        "description": "每日最多强娶次数",
+        "hint": "每个用户每日允许使用强娶功能的次数（成功与否均扣减）",
         "default": 2
     },
     "max_daily_lock": {

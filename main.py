@@ -618,7 +618,7 @@ class DailyWifePlugin(Star):
                     elif response_data.get("status") == "ok" and "data" in response_data:
                         target_nickname = response_data["data"].get("nickname", f"未知用户({target_qq})")
                         if target_qq not in group_data["pairs"]:
-                            yield event.plain_result("强娶失败：目标当前没有伴侣。")
+                            yield event.plain_result("强娶失败：目标当前没有伴侣，请改用许愿命令。")
                             return
                         target_pair = group_data["pairs"][target_qq]
                         if target_pair.get("locked", False):
