@@ -18,6 +18,7 @@ PAIR_DATA_PATH = PLUGIN_DIR / "pair_data.json"
 COOLING_DATA_PATH = PLUGIN_DIR / "cooling_data.json"
 BLOCKED_USERS_PATH = PLUGIN_DIR / "blocked_users.json"
 BREAKUP_COUNT_PATH = PLUGIN_DIR / "breakup_counts.json"
+ADVANCED_ENABLED_PATH = PLUGIN_DIR / "advanced_enabled.json"
 
 # --------------- 数据结构 ---------------
 class GroupMember:
@@ -33,7 +34,7 @@ class GroupMember:
         return f"{self.card or self.nickname}({self.user_id})"
 
 # --------------- 插件主类 ---------------
-@register("DailyWife", "jmt059", "每日老婆插件", "v0.65", "https://github.com/jmt059/DailyWife")
+@register("DailyWife", "jmt059", "每日老婆插件", "v0.7", "https://github.com/jmt059/DailyWife")
 class DailyWifePlugin(Star):
     # 用于跟踪等待确认开启进阶功能的用户和会话信息
     ADVANCED_ENABLE_STATES: Dict[str, Dict[str, any]] = {}
@@ -44,14 +45,12 @@ class DailyWifePlugin(Star):
         self.pair_data = self._load_pair_data()
         self.cooling_data = self._load_cooling_data()
         self.blocked_users = self._load_blocked_users()
+        self.advanced_enabled = self._load_data(ADVANCED_ENABLED_PATH, {})
         self._init_napcat_config()
         self._migrate_old_data()
         self._clean_invalid_cooling_records()
         self.breakup_counts = self._load_breakup_counts()
 
-        # --------------- 新增进阶功能相关数据 ---------------
-        # 存储各群是否启用进阶功能（进阶功能）
-        self.advanced_enabled: Dict[str, bool] = {}
         # 存储进阶功能每日使用计数：{group_id: {user_id: {"wish": int, "rob": int, "lock": int}}}
         self.advanced_usage: Dict[str, Dict[str, Dict[str, int]]] = {}
 
@@ -132,6 +131,19 @@ class DailyWifePlugin(Star):
         except Exception as e:
             print(f"屏蔽列表加载失败: {traceback.format_exc()}")
             return set()
+
+    def _load_data(self, path: str, default=None):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return default
+        except json.JSONDecodeError:
+            print(f"JSON 文件 {path} 解码错误，已返回默认值。")
+            return default
+        except Exception as e:
+            print(f"加载数据文件 {path} 失败: {traceback.format_exc()}")
+            return default
 
     def _save_pair_data(self):
         try:
@@ -343,7 +355,7 @@ class DailyWifePlugin(Star):
             print(f"重置检查失败: {traceback.format_exc()}")
 
     # --------------- 用户功能 ---------------
-    @filter.command("今日老婆")
+    @filter.regex(r"^今日老婆$")
     async def daily_wife_command(self, event: AstrMessageEvent):
         if not hasattr(event.message_obj, "group_id"):
             yield event.plain_result("此命令仅限群聊中使用。")
@@ -405,7 +417,7 @@ class DailyWifePlugin(Star):
             yield event.plain_result("❌ 配对过程发生严重异常，请联系开发者")
 
 
-    @filter.command("查询老婆")
+    @filter.regex(r"^查询老婆$")
     async def query_handler(self, event: AstrMessageEvent):
         try:
             group_id = str(event.message_obj.group_id)
@@ -423,7 +435,7 @@ class DailyWifePlugin(Star):
             print(f"查询异常: {traceback.format_exc()}")
             yield event.plain_result("❌ 查询过程发生异常")
 
-    @filter.command("我要分手")
+    @filter.regex(r"^我要分手$")
     async def divorce_command(self, event: AstrMessageEvent):
         try:
             group_id = str(event.message_obj.group_id)
@@ -487,6 +499,7 @@ class DailyWifePlugin(Star):
         if user_id in DailyWifePlugin.ADVANCED_ENABLE_STATES and event.message_str.strip() == "我已知晓进阶功能带来的潜在风险并且执意开启":
             del DailyWifePlugin.ADVANCED_ENABLE_STATES[user_id]
             self.advanced_enabled[group_id] = True
+            self._save_data(ADVANCED_ENABLED_PATH, self.advanced_enabled)
             yield event.plain_result("进阶功能已开启，该群现已启用进阶功能。")
 
     @filter.command("关闭进阶老婆插件功能")
@@ -494,6 +507,7 @@ class DailyWifePlugin(Star):
     async def disable_advanced_command(self, event: AstrMessageEvent):
         group_id = str(event.message_obj.group_id)
         self.advanced_enabled[group_id] = False
+        self._save_data(ADVANCED_ENABLED_PATH, self.advanced_enabled)
         yield event.plain_result("进阶功能已关闭，该群已禁用进阶功能。")
 
     def _init_advanced_usage(self, group_id: str, user_id: str):
@@ -730,10 +744,10 @@ class DailyWifePlugin(Star):
         # 基础菜单
         base_menu = (
             "【老婆插件使用说明】\n\n"
-            "🌸 基础功能：\n"
-            "/今日老婆 - 随机配对CP\n"
-            "/查询老婆 - 查询当前CP\n"
-            "/我要分手 - 解除当前CP关系\n\n"
+            "🌸 基础功能(更新为正则触发)：\n"
+            "今日老婆 - 随机配对CP\n"
+            "查询老婆 - 查询当前CP\n"
+            "我要分手 - 解除当前CP关系\n\n"
         )
         # 当前配置显示
         config_menu = (
@@ -766,7 +780,7 @@ class DailyWifePlugin(Star):
             menu_text = base_menu + admin_menu + config_menu
         else:
             adv_menu = (
-                "⚠️ 进阶命令：\n"
+                "⚠️ 进阶命令(带唤醒前缀！)：\n"
                 "/许愿 [QQ号] - 每日限1次（指定伴侣）\n"
                 "/强娶 [QQ号] - 每日限2次（抢夺他人伴侣）\n"
                 "/锁定 - 每日限1次（被抽方锁定伴侣，防止强娶）\n\n"
