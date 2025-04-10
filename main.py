@@ -780,7 +780,7 @@ class DailyWifePlugin(Star):
             menu_text = base_menu + admin_menu + config_menu
         else:
             adv_menu = (
-                "⚠️ 进阶命令(带唤醒前缀！)：\n"
+                "⚠️ 进阶命令(带唤醒前缀! 命令带空格!)：\n"
                 "/许愿 [QQ号] - 每日限1次（指定伴侣）\n"
                 "/强娶 [QQ号] - 每日限2次（抢夺他人伴侣）\n"
                 "/锁定 - 每日限1次（被抽方锁定伴侣，防止强娶）\n\n"
