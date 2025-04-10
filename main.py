@@ -34,7 +34,7 @@ class GroupMember:
         return f"{self.card or self.nickname}({self.user_id})"
 
 # --------------- 插件主类 ---------------
-@register("DailyWife", "jmt059", "每日老婆插件", "v0.7", "https://github.com/jmt059/DailyWife")
+@register("DailyWife", "jmt059", "每日老婆插件", "v0.72", "https://github.com/jmt059/DailyWife")
 class DailyWifePlugin(Star):
     # 用于跟踪等待确认开启进阶功能的用户和会话信息
     ADVANCED_ENABLE_STATES: Dict[str, Dict[str, any]] = {}
@@ -521,7 +521,7 @@ class DailyWifePlugin(Star):
         group_id = str(event.message_obj.group_id)
         user_id = event.get_sender_id()
         if not self.advanced_enabled.get(group_id, False):
-            yield event.plain_result("进阶功能未开启，该群无法使用许愿功能。")
+            yield event.plain_result("❌ 进阶功能未开启，该群无法使用许愿功能。")
             return
         parts = event.message_str.split()
         if len(parts) < 2:
@@ -544,7 +544,14 @@ class DailyWifePlugin(Star):
         group_data = self.pair_data[group_id]
 
         if user_id in group_data["pairs"]:
-            yield event.plain_result("你已经有伴侣了……许愿将不可用")
+            yield event.plain_result("❌ 你已经有伴侣了……许愿将不可用")
+            return
+
+        # 新增的判断：检查目标是否已经配对
+        if target_qq in group_data["pairs"]:
+            target_info = group_data["pairs"].get(target_qq)
+            target_display_name = target_info.get("display_name", f"QQ号为 {target_qq} 的用户") if target_info else f"QQ号为 {target_qq} 的用户"
+            yield event.plain_result(f"❌ 你许愿的对象已经有伴侣了哦，请改用强娶功能")
             return
 
         try:
@@ -558,7 +565,7 @@ class DailyWifePlugin(Star):
                 async with session.post(napcat_url, json=payload, timeout=self.timeout) as resp:
                     response_data = await resp.json()
                     if response_data.get("status") == "failed" and "用户ID" in response_data.get("message", "") and "不存在" in response_data.get("message", ""):
-                        yield event.plain_result("群内似乎没这个人呢……")
+                        yield event.plain_result("❌ 群内似乎没这个人呢……")
                         return
                     elif response_data.get("status") == "ok" and "data" in response_data:
                         target_nickname = response_data["data"].get("nickname", f"未知用户({target_qq})")
@@ -578,9 +585,9 @@ class DailyWifePlugin(Star):
 
         except aiohttp.ClientError as e:
             print(f"连接 Napcat API 失败 (许愿): {e}")
-            yield event.plain_result("许愿失败：无法连接到 Napcat 服务。")
+            yield event.plain_result("❌ 许愿失败：无法连接到 Napcat 服务。")
         except asyncio.TimeoutError:
-            yield event.plain_result("许愿失败：连接 Napcat API 超时。")
+            yield event.plain_result("❌ 许愿失败：连接 Napcat API 超时。")
         except Exception as e:
             print(f"许愿异常: {traceback.format_exc()}")
             yield event.plain_result("❌ 许愿过程发生异常。")
@@ -590,7 +597,7 @@ class DailyWifePlugin(Star):
         group_id = str(event.message_obj.group_id)
         user_id = event.get_sender_id()
         if not self.advanced_enabled.get(group_id, False):
-            yield event.plain_result("进阶功能未开启，该群无法使用强娶功能。")
+            yield event.plain_result("❌ 进阶功能未开启，该群无法使用强娶功能。")
             return
         parts = event.message_str.split()
         if len(parts) < 2:
@@ -613,7 +620,7 @@ class DailyWifePlugin(Star):
         group_data = self.pair_data[group_id]
 
         if user_id in group_data["pairs"]:
-            yield event.plain_result("你已经有伴侣了……强娶将不可用")
+            yield event.plain_result("❌ 你已经有伴侣了……强娶将不可用")
             return
 
         try:
@@ -632,16 +639,16 @@ class DailyWifePlugin(Star):
                     elif response_data.get("status") == "ok" and "data" in response_data:
                         target_nickname = response_data["data"].get("nickname", f"未知用户({target_qq})")
                         if target_qq not in group_data["pairs"]:
-                            yield event.plain_result("强娶失败：目标当前没有伴侣，请改用许愿命令。")
+                            yield event.plain_result("❌ 强娶失败：目标当前没有伴侣，请改用许愿命令。")
                             return
                         target_pair = group_data["pairs"][target_qq]
                         if target_pair.get("locked", False):
-                            yield event.plain_result("强娶失败：目标伴侣处于锁定状态。")
+                            yield event.plain_result("❌ 强娶失败：目标伴侣处于锁定状态。")
                             return
                         partner_id = target_pair["user_id"]
                         partner_pair = group_data["pairs"].get(partner_id, {})
                         if partner_pair.get("locked", False):
-                            yield event.plain_result("强娶失败：目标伴侣处于锁定状态。")
+                            yield event.plain_result("❌ 强娶失败：目标伴侣处于锁定状态。")
                             return
 
                         # 删除被抢夺者及其原配偶的双向记录
