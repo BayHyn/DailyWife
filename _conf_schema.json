@@ -3,7 +3,7 @@
         "type": "string",
         "description": "Napcat连接地址",
         "hint": "格式：IP:端口，例如 127.0.0.1:3000",
-        "default": "127.0.0.1:3000",
+        "default": "IP:端口",
         "obvious_hint": true
     },
     "request_timeout": {
@@ -53,5 +53,18 @@
         "description": "每日最多锁定次数",
         "hint": "每个用户每日允许使用锁定功能的次数",
         "default": 1
-    }
+    },
+    "show_avatar": {
+        "type": "bool",
+        "description": "是否显示伴侣头像",
+        "hint": "开启后在查询和配对成功消息中显示伴侣头像",
+        "default": true
+      },
+      "avatar_size": {
+        "type": "int",
+        "description": "伴侣头像尺寸规格",
+        "hint": "可选值：1, 2, 3, 4, 5, 40, 100, 140, 640。对应不同像素大小。",
+        "default": 640,
+        "options": [1, 2, 3, 4, 5, 40, 100, 140, 640] 
+      }
 }
