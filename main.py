@@ -8,9 +8,13 @@ import aiohttp
 import asyncio
 import traceback
 import time
+import astrbot.api.message_components as Comp
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Dict, List, Optional, Set, Tuple
+from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
+    AiocqhttpMessageEvent,
+)
 
 # --------------- 路径配置 ---------------
 PLUGIN_DIR = Path(__file__).parent
@@ -369,8 +373,52 @@ class DailyWifePlugin(Star):
 
             # Check if the user is already in a pairing
             if user_id in group_data.get("pairs", {}):
-                yield event.plain_result(f"🌸 你今天已经有伴侣啦，用查询命令查看详细哦~")
-                return
+                try:
+                        group_id = str(event.message_obj.group_id)
+                        user_id = event.get_sender_id()
+                        self._check_reset(group_id)
+                        group_data = self.pair_data.get(group_id, {})
+                        partner_info = group_data["pairs"][user_id]
+                        formatted_info = self._format_display_info(partner_info['display_name'])
+
+                        message_elements = [Plain(f"💖 您的今日伴侣：{formatted_info}\n(请好好对待TA)")]
+
+                        # 检查是否开启了显示头像
+                        if self.config.get("show_avatar", True): # 从配置中获取 show_avatar 状态，默认为 True
+                            partner_id = partner_info['user_id']
+                            avatar_size = self.config.get("avatar_size", 100) # 从配置中获取头像尺寸，默认为 100
+                            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={partner_id}&spec={avatar_size}"
+
+                            image_to_send = None
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get(avatar_url, timeout=10) as resp:
+                                        # 检查响应状态码和 Content-Type，确保是图片
+                                        if resp.status == 200 and 'image' in resp.headers.get('Content-Type', ''):
+                                            image_data = await resp.read()
+                                            # 使用图片数据创建 Image 消息段
+                                            # 这里的 Image.fromBytes 需要根据你的 Astral 库具体实现来调整
+                                            # 如果没有 fromBytes 方法，可能需要使用 Image(raw=image_data) 或其他方式
+                                            image_to_send = Image.fromBytes(image_data)
+                                        else:
+                                            print(f"下载头像失败或获取到非图片内容，状态码: {resp.status}, Content-Type: {resp.headers.get('Content-Type')}")
+                            except aiohttp.ClientError as e:
+                                print(f"下载头像网络错误: {e}")
+                            except asyncio.TimeoutError:
+                                print("下载头像超时")
+                            except Exception as e:
+                                print(f"处理下载头像异常: {traceback.format_exc()}")
+
+                            if image_to_send:
+                                message_elements.append(image_to_send)
+                            else:
+                                message_elements.append(Plain("\n[头像获取失败]"))
+
+                        yield event.chain_result(message_elements)
+                        return
+                except Exception as e:
+                    print(f"获取老婆发生异常: {traceback.format_exc()}")
+                    yield event.plain_result("❌ 获取老婆发生异常")
 
             members = await self._get_members(int(group_id))
             if not members:
@@ -589,18 +637,28 @@ class DailyWifePlugin(Star):
             self.advanced_usage[group_id][user_id] = {"wish": 0, "rob": 0, "lock": 0}
 
     @filter.command("许愿")
-    async def wish_command(self, event: AstrMessageEvent):
+    async def wish_command(
+        self, event: AiocqhttpMessageEvent, input_id: int | None = None
+    ):
         group_id = str(event.message_obj.group_id)
-        user_id = event.get_sender_id()
+        user_id = str(event.get_sender_id())
         if not self.advanced_enabled.get(group_id, False):
             yield event.plain_result("❌ 进阶功能未开启，该群无法使用许愿功能。")
             return
         parts = event.message_str.split()
         if len(parts) < 2:
-            yield event.plain_result("❌ 参数错误：请指定许愿对象（仅支持命令+QQ号）。")
+            yield event.plain_result("❌ 参数错误：请指定许愿对象。")
             return
-        target_input = parts[1]
-        target_qq = target_input[1:] if target_input.startswith("@") else target_input
+        target_qq = next(
+            (
+                str(seg.qq)
+                for seg in event.get_messages()
+                if isinstance(seg, Comp.At) and str(seg.qq) != event.get_self_id()
+            ),
+            None
+        )
+        if target_qq is None:
+            target_qq = str(input_id)
 
         if user_id == target_qq:
             yield event.plain_result("❌ 无法对自己使用许愿功能。")
@@ -649,8 +707,42 @@ class DailyWifePlugin(Star):
                         if target_qq not in group_data["used"]:
                             group_data["used"].append(target_qq)
                         self._save_pair_data()
+                        partner_info = group_data["pairs"][user_id]
+                        formatted_info = self._format_display_info(partner_info['display_name'])
                         self.advanced_usage[group_id][user_id]["wish"] += 1
-                        yield event.plain_result("许愿成功，系统已为你指定伴侣。")
+                        message_elements = [Plain(f"💖 许愿成功,系统已为您指定：{formatted_info}作为伴侣\n(请好好对待TA)")]
+                        # 检查是否开启了显示头像
+                        if self.config.get("show_avatar", True): # 从配置中获取 show_avatar 状态，默认为 True
+                            partner_id = partner_info['user_id']
+                            avatar_size = self.config.get("avatar_size", 100) # 从配置中获取头像尺寸，默认为 100
+                            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={partner_id}&spec={avatar_size}"
+
+                            image_to_send = None
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get(avatar_url, timeout=10) as resp:
+                                        # 检查响应状态码和 Content-Type，确保是图片
+                                        if resp.status == 200 and 'image' in resp.headers.get('Content-Type', ''):
+                                            image_data = await resp.read()
+                                            # 使用图片数据创建 Image 消息段
+                                            # 这里的 Image.fromBytes 需要根据你的 Astral 库具体实现来调整
+                                            # 如果没有 fromBytes 方法，可能需要使用 Image(raw=image_data) 或其他方式
+                                            image_to_send = Image.fromBytes(image_data)
+                                        else:
+                                            print(f"下载头像失败或获取到非图片内容，状态码: {resp.status}, Content-Type: {resp.headers.get('Content-Type')}")
+                            except aiohttp.ClientError as e:
+                                print(f"下载头像网络错误: {e}")
+                            except asyncio.TimeoutError:
+                                print("下载头像超时")
+                            except Exception as e:
+                                print(f"处理下载头像异常: {traceback.format_exc()}")
+
+                            if image_to_send:
+                                message_elements.append(image_to_send)
+                            else:
+                                message_elements.append(Plain("\n[头像获取失败]"))
+
+                        yield event.chain_result(message_elements)
                     else:
                         print(f"Napcat API 错误 (许愿): {response_data}")
                         yield event.plain_result("许愿失败：Napcat API 返回异常。")
@@ -665,9 +757,11 @@ class DailyWifePlugin(Star):
             yield event.plain_result("❌ 许愿过程发生异常。")
 
     @filter.command("强娶")
-    async def rob_command(self, event: AstrMessageEvent):
+    async def rob_command(
+        self, event: AiocqhttpMessageEvent, input_id: int | None = None
+    ):
         group_id = str(event.message_obj.group_id)
-        user_id = event.get_sender_id()
+        user_id = str(event.get_sender_id())
         if not self.advanced_enabled.get(group_id, False):
             yield event.plain_result("❌ 进阶功能未开启，该群无法使用强娶功能。")
             return
@@ -675,8 +769,20 @@ class DailyWifePlugin(Star):
         if len(parts) < 2:
             yield event.plain_result("❌ 参数错误：请指定强娶对象（仅支持命令+QQ号）。")
             return
-        target_input = parts[1]
-        target_qq = target_input[1:] if target_input.startswith("@") else target_input
+        target_qq = next(
+            (
+                str(seg.qq)
+                for seg in event.get_messages()
+                if isinstance(seg, Comp.At) and str(seg.qq) != event.get_self_id()
+            ),
+            None
+        )
+        if target_qq is None:
+            target_qq = str(input_id)
+
+        if target_qq is None:
+            yield event.plain_result("❌ 参数错误：请@或直接跟QQ号指定目标。")
+            return
 
         if user_id == target_qq:
             yield event.plain_result("❌ 无法对自己使用强娶功能。")
@@ -726,6 +832,8 @@ class DailyWifePlugin(Star):
                         # 删除被抢夺者及其原配偶的双向记录
                         if target_qq in group_data["pairs"]:
                             original_partner_id = group_data["pairs"][target_qq]["user_id"]
+                            original_partner_info = group_data["pairs"][target_qq]
+                            original_partner_name = self._format_display_info(original_partner_info['display_name'])
                             del group_data["pairs"][target_qq]
                             if original_partner_id in group_data["pairs"] and group_data["pairs"][original_partner_id]["user_id"] == target_qq:
                                 del group_data["pairs"][original_partner_id]
@@ -739,10 +847,43 @@ class DailyWifePlugin(Star):
                             group_data["used"].append(target_qq)
                         self._save_pair_data()
                         self.advanced_usage[group_id][user_id]["rob"] += 1
-                        yield event.plain_result("强娶成功，你已成功抢得伴侣。")
+                        partner_info = group_data["pairs"][user_id]
+                        formatted_info = self._format_display_info(partner_info['display_name'])
+                        message_elements = [Plain(f"🐮 强娶成功,系统已为您牛走了：{original_partner_name}的{formatted_info}作为伴侣")]
+                        # 检查是否开启了显示头像
+                        if self.config.get("show_avatar", True): # 从配置中获取 show_avatar 状态，默认为 True
+                            partner_id = partner_info['user_id']
+                            avatar_size = self.config.get("avatar_size", 100) # 从配置中获取头像尺寸，默认为 100
+                            avatar_url = f"http://q.qlogo.cn/headimg_dl?dst_uin={partner_id}&spec={avatar_size}"
+
+                            image_to_send = None
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get(avatar_url, timeout=10) as resp:
+                                        # 检查响应状态码和 Content-Type，确保是图片
+                                        if resp.status == 200 and 'image' in resp.headers.get('Content-Type', ''):
+                                            image_data = await resp.read()
+                                            # 使用图片数据创建 Image 消息段
+                                            # 这里的 Image.fromBytes 需要根据你的 Astral 库具体实现来调整
+                                            # 如果没有 fromBytes 方法，可能需要使用 Image(raw=image_data) 或其他方式
+                                            image_to_send = Image.fromBytes(image_data)
+                                        else:
+                                            print(f"下载头像失败或获取到非图片内容，状态码: {resp.status}, Content-Type: {resp.headers.get('Content-Type')}")
+                            except aiohttp.ClientError as e:
+                                print(f"下载头像网络错误: {e}")
+                            except asyncio.TimeoutError:
+                                print("下载头像超时")
+                            except Exception as e:
+                                print(f"处理下载头像异常: {traceback.format_exc()}")
+
+                            if image_to_send:
+                                message_elements.append(image_to_send)
+                            else:
+                                message_elements.append(Plain("\n[头像获取失败]"))
                     else:
                         print(f"Napcat API 错误 (强娶): {response_data}")
                         yield event.plain_result("强娶失败：Napcat API 返回异常。")
+            yield event.chain_result(message_elements)
 
         except aiohttp.ClientError as e:
             print(f"连接 Napcat API 失败 (强娶): {e}")
