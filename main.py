@@ -46,6 +46,7 @@ class DailyWifePlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
         self.config = config
+        self.enable_advanced_globally = self.config.get("enable_advanced_globally", False)
         self.pair_data = self._load_pair_data()
         self.cooling_data = self._load_cooling_data()
         self.blocked_users = self._load_blocked_users()
@@ -358,6 +359,16 @@ class DailyWifePlugin(Star):
         except Exception as e:
             print(f"重置检查失败: {traceback.format_exc()}")
 
+    def _is_advanced_enabled(self, group_id: str) -> bool:
+        """
+        检查指定群聊的进阶功能是否已开启，会优先判断全局开关。
+        """
+        # 如果全局开关已开启，则直接返回 True
+        if self.enable_advanced_globally:
+            return True
+        # 否则，返回该群聊自身的设置
+        return self.advanced_enabled.get(group_id, False)
+
     # --------------- 用户功能 ---------------
     @filter.regex(r"^今日老婆$") # 或者 filter.command("今日老婆") 取决于你的选择
     async def daily_wife_command(self, event: AstrMessageEvent):
@@ -642,7 +653,7 @@ class DailyWifePlugin(Star):
     ):
         group_id = str(event.message_obj.group_id)
         user_id = str(event.get_sender_id())
-        if not self.advanced_enabled.get(group_id, False):
+        if not self._is_advanced_enabled(group_id): 
             yield event.plain_result("❌ 进阶功能未开启，该群无法使用许愿功能。")
             return
         parts = event.message_str.split()
@@ -762,7 +773,7 @@ class DailyWifePlugin(Star):
     ):
         group_id = str(event.message_obj.group_id)
         user_id = str(event.get_sender_id())
-        if not self.advanced_enabled.get(group_id, False):
+        if not self._is_advanced_enabled(group_id):
             yield event.plain_result("❌ 进阶功能未开启，该群无法使用强娶功能。")
             return
         parts = event.message_str.split()
@@ -897,7 +908,7 @@ class DailyWifePlugin(Star):
     @filter.command("锁定")
     async def lock_command(self, event: AstrMessageEvent):
         group_id = str(event.message_obj.group_id)
-        if not self.advanced_enabled.get(group_id, False):
+        if not self._is_advanced_enabled(group_id):
             yield event.plain_result("进阶功能未开启，该群无法使用锁定功能。")
             return
         user_id = event.get_sender_id()

@@ -3,8 +3,14 @@
         "type": "string",
         "description": "Napcat连接地址",
         "hint": "格式：IP:端口，例如 127.0.0.1:3000",
-        "default": "IP:端口",
+        "default": "127.0.0.1:3000",
         "obvious_hint": true
+    },
+        "enable_advanced_globally": {
+        "description": "【全局开关】一键开启所有群的进阶功能",
+        "type": "bool",
+        "hint": "开启后，所有群聊都将默认启用进阶功能（许愿/强娶/锁定），无需再逐个使用命令开启。默认关闭。",
+        "default": false
     },
     "request_timeout": {
         "type": "int",

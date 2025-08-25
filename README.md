@@ -14,7 +14,12 @@
 
 ![alt text](img/image-4.png)
 ![alt text](img/image-5.png)
+⚠注意此处测试的是用“设置账号信息”来测试api，如果请求体不改，bot的昵称，签名都会变成"textValue"
+你也可以用这个界面的其他功能来测试api
 ![alt text](img/image-6.png)
+另外说明：在napcat里面测试不成功也不要紧，
+重要的是确保astrbot可以访问你的api地址，
+如果astrbot也无法访问你的api，请检查防火墙、端口、网络以及容器的问题。
 
 - 如果可用，请进行最后一步配置
 
